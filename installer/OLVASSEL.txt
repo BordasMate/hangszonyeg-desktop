@@ -1,0 +1,28 @@
+Hangszőnyeg – Windows-program
+==============================
+
+Indítás: Hangszonyeg.exe. A program egy ablakban futtatja a Hangszőnyeg teljes felületét,
+és mellette egy VST3-gazdát, amely a gépre telepített effekt-pluginokat bármelyik csatornára
+(A, B, C, Mester) láncba fűzi.
+
+VST3-pluginok
+- Első indításkor a program megkeresi a pluginokat a szokásos helyen
+  (C:\Program Files\Common Files\VST3). Más mappát a Keverő > Pluginok panelen,
+  a „Mappa hozzáadása…” gombbal adhatsz hozzá.
+- Csak effekt-pluginok tehetők csatornára (aminek van hangbemenete). VST2 (.dll) pluginokat
+  ez a változat nem tölt be, csak VST3-at.
+- A plugin felülete a „Felület” gombbal nyílik saját ablakban.
+- A preset a pluginok beállításait is elmenti.
+
+Késleltetés
+- A VST3-lánc miatt a sávok kb. 0,1 másodperccel később szólnak (egymáshoz képest együtt).
+  Ha recsegést hallasz, a Pluginok panelen növeld a „Biztonsági puffert”.
+
+Adatok helye: %APPDATA%\Hangszonyeg (plugin-lista, beállítások, a felület tárolója).
+
+Első indításkor a Windows figyelmeztethet, mert a program nincs digitálisan aláírva:
+„További információ” > „Futtatás mindenképp”.
+
+A program a Microsoft Edge WebView2 futtatókörnyezetet használja, amely Windows 10 és 11
+alatt általában már telepítve van. Ha mégsem indulna, telepítsd innen:
+https://developer.microsoft.com/microsoft-edge/webview2/

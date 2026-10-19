@@ -1,0 +1,18 @@
+# A JUCE a WebView2-ben minden új ablakot elnyel. A Hangszőnyeg nézetei (Szőttes, Napló, Montázs…)
+# window.open('')-nel nyílnak külön ablakba, amelyekbe az oldal maga rajzol; ezeket hagyjuk a WebView2-re,
+# amely saját felugró ablakot nyit nekik, élő kapcsolatban a főablakkal.
+set(_f "${juce_SOURCE_DIR}/modules/juce_gui_extra/native/juce_WebBrowserComponent_windows.cpp")
+file(READ "${_f}" _src)
+string(REPLACE "\r\n" "\n" _src "${_src}")
+set(_old "                    if (uriString.isNotEmpty())\n                    {\n                        owner.newWindowAttemptingToLoad (uriString);")
+set(_new "                    if (uriString.isNotEmpty() && uriString != \"about:blank\")\n                    {\n                        owner.newWindowAttemptingToLoad (uriString);")
+string(FIND "${_src}" "${_new}" _already)
+if(_already EQUAL -1)
+  string(FIND "${_src}" "${_old}" _pos)
+  if(_pos EQUAL -1)
+    message(FATAL_ERROR "A JUCE WebView2-forrása nem a várt formájú; a felugró ablakok javítását frissíteni kell.")
+  endif()
+  string(REPLACE "${_old}" "${_new}" _src "${_src}")
+  file(WRITE "${_f}" "${_src}")
+  message(STATUS "JUCE: a felugró nézetablakok engedélyezve (about:blank).")
+endif()
