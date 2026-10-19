@@ -37,6 +37,8 @@ public:
         bool sendText (const juce::String& text);
         bool sendBinary (const void* data, size_t size);
         void closeSocket();
+        void gracefulClose();
+        bool writeAll (const void* data, size_t size);
 
         const juce::String& getKind() const noexcept { return kind; }
         int getId() const noexcept { return id; }

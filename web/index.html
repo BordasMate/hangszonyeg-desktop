@@ -3687,7 +3687,7 @@ class HzNativeIO extends AudioWorkletProcessor{
     this.m=0;this.miss=0;this.out=null;this.lastRep=0;
     this.port.onmessage=e=>{const d=e.data;if(d&&d.t==='port'){this.out=e.ports[0];this.out.onmessage=ev=>this.wet(ev.data);}else if(d&&d.t==='delay'){this.D=d.D|0;this.Dd=d.Dd|0;}};}
   wet(buf){const dv=new DataView(buf),fr=dv.getUint32(8,true),seq=dv.getUint32(12,true);if(fr!==this.B)return;
-    const L=new Float32Array(buf,16,fr),R=new Float32Array(buf,16+fr*4,fr),o=(seq*this.B)%this.R;this.wL.set(L,o);this.wR.set(R,o);this.valid[(o/this.B)|0]=seq;}
+    const L=new Float32Array(buf,16,fr),R=new Float32Array(buf,16+fr*4,fr),o=(seq*this.B)%this.R;this.wL.set(L,o);this.wR.set(R,o);this.valid[(o/this.B)|0]=seq;if(!this.got)this.got=seq+1;}
   process(ins,outs){
     const i=ins[0],o=outs[0],N=o[0].length,iL=i&&i[0]?i[0]:null,iR=i&&i[1]?i[1]:iL,oL=o[0],oR=o[1]||o[0];
     for(let k=0;k<N;k++){
@@ -3697,7 +3697,7 @@ class HzNativeIO extends AudioWorkletProcessor{
         new Float32Array(buf,16,this.B).set(this.inL);new Float32Array(buf,16+this.B*4,this.B).set(this.inR);this.out.postMessage(buf,[buf]);}this.seq++;}
       const r=n-this.D,rd=n-this.Dd;let wl=0,wr=0,ok=false;
       if(r>=0){const s=Math.floor(r/this.B),ix=r&(this.R-1);if(this.valid[(ix/this.B)|0]===s){wl=this.wL[ix];wr=this.wR[ix];ok=true;}}
-      const dl=rd>=0?this.dryL[rd&(this.R-1)]:0,dr=rd>=0?this.dryR[rd&(this.R-1)]:0;if(!ok){wl=dl;wr=dr;if(r>=0)this.miss++;}
+      const dl=rd>=0?this.dryL[rd&(this.R-1)]:0,dr=rd>=0?this.dryR[rd&(this.R-1)]:0;if(!ok){wl=dl;wr=dr;if(this.got&&r>=(this.got-1)*this.B)this.miss++;}
       this.m+=((ok?1:0)-this.m)*0.004;oL[k]=this.m*wl+(1-this.m)*dl;oR[k]=this.m*wr+(1-this.m)*dr;
       this.n++;
     }

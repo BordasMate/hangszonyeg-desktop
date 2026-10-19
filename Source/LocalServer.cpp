@@ -1,3 +1,8 @@
+#ifdef _WIN32
+ #include <winsock2.h>
+#else
+ #include <sys/socket.h>
+#endif
 #include "LocalServer.h"
 #include "Sha1.h"
 
@@ -100,6 +105,57 @@ LocalServer::Connection::~Connection()
     stopThread (2000);
 }
 
+// Windowson a closesocket() az el nem küldött adatot eldobhatja: előbb lezárjuk a küldő irányt,
+// megvárjuk, hogy a böngésző is lezárja a kapcsolatot, és csak utána zárjuk be a socketet.
+void LocalServer::Connection::gracefulClose()
+{
+    if (socket != nullptr && socket->isConnected())
+    {
+        const auto h = socket->getRawSocketHandle();
+       #ifdef _WIN32
+        ::shutdown ((SOCKET) h, SD_SEND);
+       #else
+        ::shutdown (h, SHUT_WR);
+       #endif
+        char dummy[512];
+        const auto until = Time::getMillisecondCounter() + 3000;
+        while (Time::getMillisecondCounter() < until)
+        {
+            const int ready = socket->waitUntilReady (true, 100);
+            if (ready < 0)
+                break;
+            if (ready == 0)
+                continue;
+            if (socket->read (dummy, (int) sizeof (dummy), false) <= 0)
+                break;
+        }
+    }
+    closeSocket();
+}
+
+// A socket az olvasás miatt nem blokkoló módban van: ha a küldőpuffer megtelt, kivárjuk, amíg újra írható.
+bool LocalServer::Connection::writeAll (const void* data, size_t size)
+{
+    size_t sent = 0;
+    auto lastProgress = Time::getMillisecondCounter();
+    while (sent < size)
+    {
+        if (socket == nullptr || ! socket->isConnected())
+            return false;
+        const int w = socket->write (static_cast<const char*> (data) + sent, (int) jmin<size_t> (size - sent, 1 << 16));
+        if (w > 0)
+        {
+            sent += (size_t) w;
+            lastProgress = Time::getMillisecondCounter();
+            continue;
+        }
+        if (Time::getMillisecondCounter() - lastProgress > 5000)
+            return false;
+        socket->waitUntilReady (false, 50);
+    }
+    return true;
+}
+
 void LocalServer::Connection::closeSocket()
 {
     const ScopedLock sl (sendLock);
@@ -183,7 +239,7 @@ void LocalServer::Connection::run()
     {
         if (method == "GET" || method == "HEAD")
             serveHttp (path);
-        closeSocket();
+        gracefulClose();
         return;
     }
 
@@ -191,8 +247,8 @@ void LocalServer::Connection::run()
     if (query["token"] != owner.token)
     {
         const char* resp = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        socket->write (resp, (int) strlen (resp));
-        closeSocket();
+        writeAll (resp, strlen (resp));
+        gracefulClose();
         return;
     }
 
@@ -303,7 +359,7 @@ bool LocalServer::Connection::handshake (const StringPairArray& headers)
     const auto resp = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "
                       + accept + "\r\n\r\n";
     const ScopedLock sl (sendLock);
-    return socket->write (resp.toRawUTF8(), (int) resp.getNumBytesAsUTF8()) > 0;
+    return writeAll (resp.toRawUTF8(), resp.getNumBytesAsUTF8());
 }
 
 bool LocalServer::Connection::sendFrame (uint8_t opcode, const void* data, size_t size)
@@ -331,17 +387,7 @@ bool LocalServer::Connection::sendFrame (uint8_t opcode, const void* data, size_
     const ScopedLock sl (sendLock);
     if (socket == nullptr || ! socket->isConnected())
         return false;
-    if (socket->write (h, (int) hl) != (int) hl)
-        return false;
-    size_t sent = 0;
-    while (sent < size)
-    {
-        const int w = socket->write (static_cast<const char*> (data) + sent, (int) jmin<size_t> (size - sent, 1 << 20));
-        if (w <= 0)
-            return false;
-        sent += (size_t) w;
-    }
-    return true;
+    return writeAll (h, hl) && (size == 0 || writeAll (data, size));
 }
 
 bool LocalServer::Connection::sendText (const String& text)
@@ -368,22 +414,13 @@ void LocalServer::Connection::serveHttp (const String& path)
     if (! res.has_value())
     {
         head = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        socket->write (head.toRawUTF8(), (int) head.getNumBytesAsUTF8());
+        writeAll (head.toRawUTF8(), head.getNumBytesAsUTF8());
         return;
     }
 
     head << "HTTP/1.1 200 OK\r\nContent-Type: " << res->mimeType
          << "\r\nContent-Length: " << String ((int64) res->data.getSize())
          << "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
-    socket->write (head.toRawUTF8(), (int) head.getNumBytesAsUTF8());
-
-    size_t sent = 0;
-    while (sent < res->data.getSize())
-    {
-        const int w = socket->write (static_cast<const char*> (res->data.getData()) + sent,
-                                     (int) jmin<size_t> (res->data.getSize() - sent, 65536));
-        if (w <= 0)
-            break;
-        sent += (size_t) w;
-    }
+    if (writeAll (head.toRawUTF8(), head.getNumBytesAsUTF8()))
+        writeAll (res->data.getData(), res->data.getSize());
 }
