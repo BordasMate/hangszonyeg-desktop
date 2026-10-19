@@ -58,6 +58,14 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
           & $iscc /O"dist" installer/hangszonyeg.iss
 
+      - name: Próba-VST3 (a tesztekhez)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $juce = (Resolve-Path build/_deps/juce-src).Path -replace '\\','/'
+          cmake -S tests/testplugin -B build-tp -A x64 "-DJUCE_DIR=$juce" 2>&1 | Tee-Object -FilePath naplo/3-probaplugin.txt
+          cmake --build build-tp --config Release --parallel 2>&1 | Tee-Object -Append -FilePath naplo/3-probaplugin.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: Hangszonyeg-Windows
@@ -71,6 +79,9 @@ jobs:
         run: |
           if (-not (Test-Path naplo)) { exit 0 }
           Copy-Item build/CMakeFiles/CMakeConfigureLog.yaml naplo/ -ErrorAction SilentlyContinue
+          Copy-Item dist/Hangszonyeg/Hangszonyeg.exe naplo/ -ErrorAction SilentlyContinue
+          $tp = Get-ChildItem -Recurse build-tp -Directory -Filter "HZ Teszt.vst3" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($tp) { Copy-Item -Recurse $tp.FullName naplo/ }
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
           $msg = "Napló: ${{ github.sha }} (${{ job.status }})"
