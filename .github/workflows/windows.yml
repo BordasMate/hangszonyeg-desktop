@@ -91,10 +91,19 @@ jobs:
           git commit -m $msg | Out-Null
           git push -f origin ci-naplo-tmp:ci-naplo
 
-      - name: Kiadás (címkénél)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Kiadás (a legújabb változat a Releases oldalon)
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'legujabb' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && format('Hangszőnyeg {0}', github.ref_name) || 'Hangszőnyeg – legújabb változat' }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            Windows-telepítő és hordozható változat.
+            - **Hangszonyeg-telepito.exe**: telepítő (rendszergazdai jog nem kell).
+            - **Hangszonyeg-hordozhato.zip**: kicsomagolás után a Hangszonyeg.exe indítható.
+            Első indításkor a Windows figyelmeztethet, mert a program nincs aláírva: „További információ” → „Futtatás mindenképp”.
           files: |
             dist/Hangszonyeg-telepito.exe
             dist/Hangszonyeg-hordozhato.zip
