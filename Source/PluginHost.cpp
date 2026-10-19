@@ -194,6 +194,12 @@ void PluginHost::handleControl (const var& m)
     else if (t == "move" && ch >= 0)   moveSlot (ch, (int) m["id"], (int) m["dir"]);
     else if (t == "bypass" && ch >= 0) setBypass (ch, (int) m["id"], (bool) m["on"]);
     else if (t == "editor" && ch >= 0) openEditor (ch, (int) m["id"]);
+    else if (t == "closeEditor" && ch >= 0)
+    {
+        if (auto* s = findSlot (ch, (int) m["id"]))
+            closeEditor (*s);
+        sendChains();
+    }
     else if (t == "getState")   sendState (req);
     else if (t == "clear")      clearAll();
     else if (t == "fullscreen")
@@ -350,10 +356,21 @@ void PluginHost::removeSlot (int ch, int id)
                 break;
             }
     }
-    if (gone != nullptr && gone->inst != nullptr)
-        gone->inst->releaseResources();
-    gone.reset();
     sendChains();
+    // a plugin példányát csak a nyitott felülete teljes lebontása után, egy későbbi üzenetkörben töröljük
+    if (gone != nullptr)
+        retire (std::move (gone));
+}
+
+void PluginHost::retire (std::unique_ptr<Slot> s)
+{
+    auto* raw = s.release();
+    Timer::callAfterDelay (300, [raw]
+    {
+        std::unique_ptr<Slot> victim (raw);
+        if (victim->inst != nullptr)
+            victim->inst->releaseResources();
+    });
 }
 
 void PluginHost::moveSlot (int ch, int id, int dir)
@@ -430,11 +447,10 @@ void PluginHost::clearAll()
         for (int c = 0; c < numChains; ++c)
             gone[(size_t) c] = std::move (chains[(size_t) c].slots);
     }
+    sendChains();
     for (auto& v : gone)
         for (auto& s : v)
-            if (s->inst != nullptr)
-                s->inst->releaseResources();
-    sendChains();
+            retire (std::move (s));
 }
 
 //==============================================================================

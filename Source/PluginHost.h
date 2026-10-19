@@ -75,6 +75,7 @@ private:
     void closeEditor (Slot&);
     void sendState (const juce::var& req);
     void clearAll();
+    void retire (std::unique_ptr<Slot>);
     void prepareAll();
     void preparePlugin (juce::AudioPluginInstance&, PlayHead&);
     Slot* findSlot (int ch, int id);

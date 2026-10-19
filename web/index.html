@@ -3789,7 +3789,7 @@ function natRender(){
       <button type="button" class="quiet" data-a="up" ${i===0?'disabled':''} aria-label="Előrébb a láncban">↑</button><button type="button" class="quiet" data-a="dn" ${i===a.length-1?'disabled':''} aria-label="Hátrébb a láncban">↓</button><button type="button" class="quiet" data-a="rm">Eltávolítás</button></div></li>`).join('')
     :`<li class="plg-empty small muted">A(z) ${c==='M'?'mester':c} csatornán nincs VST3-plugin.</li>`;
   $$('#nat-list button').forEach(b=>b.addEventListener('click',()=>{const id=+b.closest('li').dataset.id,k=b.dataset.a,s=a.find(x=>x.id===id);
-    if(k==='ed')natSend({t:'editor',ch:c,id});else if(k==='byp')natSend({t:'bypass',ch:c,id,on:!s.bypass});else if(k==='up')natSend({t:'move',ch:c,id,dir:-1});else if(k==='dn')natSend({t:'move',ch:c,id,dir:1});else if(k==='rm')natSend({t:'remove',ch:c,id});}));
+    if(k==='ed')natSend({t:s.editor?'closeEditor':'editor',ch:c,id});else if(k==='byp')natSend({t:'bypass',ch:c,id,on:!s.bypass});else if(k==='up')natSend({t:'move',ch:c,id,dir:-1});else if(k==='dn')natSend({t:'move',ch:c,id,dir:1});else if(k==='rm')natSend({t:'remove',ch:c,id});}));
   const{Dt,sr}=natDelays(),miss=NAT.miss[c]||0;
   $('#nat-note').textContent=(NAT.scanTxt?NAT.scanTxt+' ':'')+(CHS.some(natActive)?`A natív láncok miatt a sávok ${Math.round(Dt/sr*1000)} ms-mal később szólnak, egymáshoz képest együtt.${miss?` Ezen a csatornán ${miss} minta érkezett meg későn; ha recseg, növeld a puffert.`:''}`:'A VST3-láncok az EQ után, a dinamikus EQ és a kompresszor előtt ülnek, a mesteren az EQ után; a VST3 a webes pluginok után jön.');
 }
