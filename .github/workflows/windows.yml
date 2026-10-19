@@ -30,10 +30,17 @@ jobs:
 
       - name: CMake beállítás
         shell: pwsh
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=$((Resolve-Path wv2).Path -replace '\\','/')"
+        run: |
+          New-Item -ItemType Directory -Force -Path naplo | Out-Null
+          cmake --version
+          cmake -S . -B build -A x64 "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=$((Resolve-Path wv2).Path -replace '\\','/')" 2>&1 | Tee-Object -FilePath naplo/1-beallitas.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Fordítás
-        run: cmake --build build --config Release --parallel
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel 2>&1 | Tee-Object -FilePath naplo/2-forditas.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Hordozható csomag
         shell: pwsh
@@ -57,6 +64,21 @@ jobs:
           path: |
             dist/Hangszonyeg-telepito.exe
             dist/Hangszonyeg-hordozhato.zip
+
+      - name: Napló mentése a ci-naplo ágra (a hibakereséshez)
+        if: always()
+        shell: pwsh
+        run: |
+          if (-not (Test-Path naplo)) { exit 0 }
+          Copy-Item build/CMakeFiles/CMakeConfigureLog.yaml naplo/ -ErrorAction SilentlyContinue
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          $msg = "Napló: ${{ github.sha }} (${{ job.status }})"
+          git checkout --orphan ci-naplo-tmp
+          git rm -rf --cached . | Out-Null
+          git add -f naplo
+          git commit -m $msg | Out-Null
+          git push -f origin ci-naplo-tmp:ci-naplo
 
       - name: Kiadás (címkénél)
         if: startsWith(github.ref, 'refs/tags/v')
