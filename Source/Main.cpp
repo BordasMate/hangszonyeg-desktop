@@ -4,6 +4,11 @@
 
 using namespace juce;
 
+// HZ_UI_MODE: 0 = ablak nélküli próbaváltozat, 1 = beépített WebView2-ablak, 2 = Edge/Chrome alkalmazásablak
+#ifndef HZ_UI_MODE
+ #define HZ_UI_MODE 2
+#endif
+
 namespace
 {
 String hu (const char* utf8) { return String (CharPointer_UTF8 (utf8)); }
@@ -29,8 +34,9 @@ std::optional<LocalServer::HttpResource> serveResource (const String& path)
 }
 } // namespace
 
-#if ! HZ_HEADLESS
+#if HZ_UI_MODE == 1
 //==============================================================================
+// Beépített WebView2-ablak (Visual Studióval fordítva)
 class MainWindow final : public DocumentWindow
 {
 public:
@@ -38,7 +44,6 @@ public:
         : DocumentWindow (hu ("Hangszőnyeg"), Colours::white, DocumentWindow::allButtons)
     {
         setUsingNativeTitleBar (true);
-
         auto options = WebBrowserComponent::Options {}
                            .withBackend (WebBrowserComponent::Options::Backend::webview2)
                            .withWinWebView2Options (WebBrowserComponent::Options::WinWebView2 {}
@@ -46,34 +51,114 @@ public:
                                                         .withStatusBarDisabled()
                                                         .withBackgroundColour (Colours::white))
                            .withKeepPageLoadedWhenBrowserIsHidden();
-
         browser = std::make_unique<WebBrowserComponent> (options);
         browser->setSize (1440, 900);
         setContentNonOwned (browser.get(), true);
         setResizable (true, false);
         setResizeLimits (900, 600, 10000, 10000);
-
         const auto area = Desktop::getInstance().getDisplays().getPrimaryDisplay()->userArea;
         centreWithSize (jmin (1500, area.getWidth() - 40), jmin (960, area.getHeight() - 40));
         setVisible (true);
         browser->goToURL (url);
     }
-
     ~MainWindow() override { clearContentComponent(); }
-
     void closeButtonPressed() override { JUCEApplication::getInstance()->systemRequestedQuit(); }
-
     void setKiosk (bool on)
     {
         auto& d = Desktop::getInstance();
-        if (on && d.getKioskModeComponent() != this)
-            d.setKioskModeComponent (this, false);
-        else if (! on && d.getKioskModeComponent() == this)
-            d.setKioskModeComponent (nullptr);
+        if (on && d.getKioskModeComponent() != this) d.setKioskModeComponent (this, false);
+        else if (! on && d.getKioskModeComponent() == this) d.setKioskModeComponent (nullptr);
     }
-
+    void bringUp() { toFront (true); }
 private:
     std::unique_ptr<WebBrowserComponent> browser;
+};
+
+#elif HZ_UI_MODE == 2
+//==============================================================================
+// A felület a gépen lévő Microsoft Edge (vagy Chrome) alkalmazásablakában fut: saját ablak, címsor és fülek nélkül,
+// saját, elkülönített profillal. Ha ezt az ablakot bezárod, a program is kilép.
+class MainWindow final : private Timer
+{
+public:
+    MainWindow (const String& urlIn, const File& dataDirIn) : url (urlIn), dataDir (dataDirIn) { open(); }
+
+    void bringUp() { if (! isAlive()) open(); }
+
+private:
+    static File findBrowser()
+    {
+        StringArray candidates;
+       #if JUCE_WINDOWS
+        for (auto key : { "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe\\",
+                          "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe\\" })
+            candidates.add (WindowsRegistry::getValue (key));
+        for (auto base : { File::globalApplicationsDirectoryX86, File::globalApplicationsDirectory })
+            candidates.add (File::getSpecialLocation (base).getChildFile ("Microsoft\\Edge\\Application\\msedge.exe").getFullPathName());
+        for (auto key : { "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe\\",
+                          "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe\\" })
+            candidates.add (WindowsRegistry::getValue (key));
+        for (auto base : { File::globalApplicationsDirectory, File::globalApplicationsDirectoryX86 })
+            candidates.add (File::getSpecialLocation (base).getChildFile ("Google\\Chrome\\Application\\chrome.exe").getFullPathName());
+        candidates.add (File::getSpecialLocation (File::userHomeDirectory).getChildFile ("AppData\\Local\\Google\\Chrome\\Application\\chrome.exe").getFullPathName());
+       #else
+        candidates.addArray ({ "/usr/bin/microsoft-edge", "/usr/bin/google-chrome", "/usr/bin/chromium" });
+       #endif
+        for (auto& c : candidates)
+        {
+            const auto p = c.unquoted().trim();
+            if (p.isNotEmpty() && File::isAbsolutePath (p) && File (p).existsAsFile())
+                return File (p);
+        }
+        return {};
+    }
+
+    bool isAlive() const { return child != nullptr && child->isRunning(); }
+
+    void open()
+    {
+        const auto browser = findBrowser();
+        if (browser == File())
+        {
+            URL (url).launchInDefaultBrowser();
+            usingFallback = true;
+            return;
+        }
+        const auto area = Desktop::getInstance().getDisplays().getPrimaryDisplay()->userArea;
+        StringArray args { browser.getFullPathName(),
+                           "--app=" + url,
+                           "--user-data-dir=" + dataDir.getChildFile ("Felulet").getFullPathName(),
+                           "--window-size=" + String (jmin (1500, area.getWidth() - 40)) + "," + String (jmin (960, area.getHeight() - 40)),
+                           "--no-first-run", "--no-default-browser-check", "--disable-sync",
+                           "--autoplay-policy=no-user-gesture-required" };
+        child = std::make_unique<ChildProcess>();
+        if (! child->start (args, 0))
+        {
+            child.reset();
+            URL (url).launchInDefaultBrowser();
+            usingFallback = true;
+            return;
+        }
+        startedAt = Time::getMillisecondCounter();
+        startTimer (700);
+    }
+
+    void timerCallback() override
+    {
+        if (isAlive())
+            return;
+        stopTimer();
+        // ha a böngésző azonnal kilépett (átadta egy már futó példánynak), a program tovább fut
+        if (Time::getMillisecondCounter() - startedAt < 4000)
+            return;
+        JUCEApplication::getInstance()->systemRequestedQuit();
+    }
+
+    String url;
+    File dataDir;
+    std::unique_ptr<ChildProcess> child;
+    uint32 startedAt = 0;
+    bool usingFallback = false;
 };
 #endif
 
@@ -88,7 +173,7 @@ public:
     void initialise (const String& commandLine) override
     {
         PluginHost::AppHooks hooks;
-#if ! HZ_HEADLESS
+#if HZ_UI_MODE == 1
         hooks.setFullscreen = [this] (bool on) { if (window != nullptr) window->setKiosk (on); };
         hooks.getMainComponent = [this]() -> Component* { return window.get(); };
 #endif
@@ -96,14 +181,13 @@ public:
 
         auto token = Uuid().toString().removeCharacters ("-");
         int port = preferredPort;
-#if HZ_HEADLESS
-        // próbafuttatás: a jelszó és a port a parancssorból is megadható
+        bool noWindow = (HZ_UI_MODE == 0);
+        // próbafuttatáshoz a jelszó és a port a parancssorból is megadható
         auto args = StringArray::fromTokens (commandLine, true);
         if (args.indexOf ("--token") >= 0) token = args[args.indexOf ("--token") + 1];
         if (args.indexOf ("--port") >= 0) port = args[args.indexOf ("--port") + 1].getIntValue();
-#else
-        ignoreUnused (commandLine);
-#endif
+        if (args.contains ("--no-window")) noWindow = true;
+
         server = std::make_unique<LocalServer> (*host, serveResource, token);
         host->attachServer (server.get());
         port = server->start (port);
@@ -116,10 +200,13 @@ public:
         }
 
         const auto url = "http://127.0.0.1:" + String (port) + "/?token=" + token;
-#if HZ_HEADLESS
-        std::cout << "HZ_READY " << port << " " << token << std::endl;
-        ignoreUnused (url);
-#else
+        host->getDataDir().getChildFile ("utolso-cim.txt").replaceWithText (url);
+        if (noWindow)
+        {
+            std::cout << "HZ_READY " << port << " " << token << std::endl;
+            return;
+        }
+#if HZ_UI_MODE != 0
         window = std::make_unique<MainWindow> (url, host->getDataDir());
 #endif
     }
@@ -132,7 +219,7 @@ public:
             server->stop();
         if (host != nullptr)
             host->attachServer (nullptr);
-#if ! HZ_HEADLESS
+#if HZ_UI_MODE != 0
         window = nullptr;
 #endif
         host = nullptr;
@@ -142,16 +229,16 @@ public:
     void systemRequestedQuit() override { quit(); }
     void anotherInstanceStarted (const String&) override
     {
-#if ! HZ_HEADLESS
+#if HZ_UI_MODE != 0
         if (window != nullptr)
-            window->toFront (true);
+            window->bringUp();
 #endif
     }
 
 private:
     std::unique_ptr<PluginHost> host;
     std::unique_ptr<LocalServer> server;
-#if ! HZ_HEADLESS
+#if HZ_UI_MODE != 0
     std::unique_ptr<MainWindow> window;
 #endif
 };

@@ -1,0 +1,67 @@
+name: Windows-program
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Sorvégek változatlanul (a JUCE-javítás miatt)
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - name: WebView2 SDK letöltése (NuGet)
+        shell: pwsh
+        run: |
+          $idx = Invoke-RestMethod https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/index.json
+          $ver = ($idx.versions | Where-Object { $_ -notmatch '-' })[-1]
+          Write-Host "WebView2 SDK: $ver"
+          New-Item -ItemType Directory -Force -Path wv2 | Out-Null
+          Invoke-WebRequest "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$ver/microsoft.web.webview2.$ver.nupkg" -OutFile wv2.zip
+          Expand-Archive wv2.zip -DestinationPath "wv2/Microsoft.Web.WebView2.$ver" -Force
+
+      - name: CMake beállítás
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=$((Resolve-Path wv2).Path -replace '\\','/')"
+
+      - name: Fordítás
+        run: cmake --build build --config Release --parallel
+
+      - name: Hordozható csomag
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse build -Filter Hangszonyeg.exe | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path dist/Hangszonyeg | Out-Null
+          Copy-Item $exe.FullName dist/Hangszonyeg/
+          Copy-Item installer/OLVASSEL.txt dist/Hangszonyeg/
+          Compress-Archive -Path dist/Hangszonyeg/* -DestinationPath dist/Hangszonyeg-hordozhato.zip -Force
+
+      - name: Telepítő (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc /O"dist" installer/hangszonyeg.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hangszonyeg-Windows
+          path: |
+            dist/Hangszonyeg-telepito.exe
+            dist/Hangszonyeg-hordozhato.zip
+
+      - name: Kiadás (címkénél)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Hangszonyeg-telepito.exe
+            dist/Hangszonyeg-hordozhato.zip

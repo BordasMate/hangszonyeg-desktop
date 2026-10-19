@@ -23,11 +23,21 @@ if(NOT juce_POPULATED)
 endif()
 
 option(HZ_LINUX_UI "Linuxon is ablakos változat (csak fejlesztői próbához)" OFF)
-if(WIN32 AND NOT HZ_HEADLESS)
+set(HZ_UI "appwindow" CACHE STRING "A felület: appwindow (Edge/Chrome alkalmazásablak), webview2 (beépített ablak, csak Visual Studióval), none")
+if(HZ_HEADLESS)
+  set(HZ_UI "none")
+endif()
+if(HZ_UI STREQUAL "webview2" AND WIN32 AND MSVC)
   set(HZ_WEBVIEW TRUE)
+  set(HZ_UI_MODE 1)
+elseif(HZ_UI STREQUAL "none")
+  set(HZ_WEBVIEW FALSE)
+  set(HZ_UI_MODE 0)
 else()
   set(HZ_WEBVIEW FALSE)
+  set(HZ_UI_MODE 2)
 endif()
+message(STATUS "Hangszőnyeg felület: ${HZ_UI} (mód ${HZ_UI_MODE})")
 
 juce_add_gui_app(Hangszonyeg
   PRODUCT_NAME "Hangszonyeg"
@@ -56,11 +66,11 @@ target_compile_definitions(Hangszonyeg PRIVATE
   JUCE_PLUGINHOST_LADSPA=0
   JUCE_PLUGINHOST_LV2=0
   JUCE_USE_CURL=0
-  HZ_HEADLESS=$<BOOL:${HZ_HEADLESS}>)
+  HZ_UI_MODE=${HZ_UI_MODE})
 
 if(HZ_WEBVIEW)
   target_compile_definitions(Hangszonyeg PRIVATE JUCE_WEB_BROWSER=1 JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1)
-elseif(HZ_LINUX_UI AND NOT HZ_HEADLESS)
+elseif(HZ_LINUX_UI AND HZ_UI_MODE EQUAL 1)
   target_compile_definitions(Hangszonyeg PRIVATE JUCE_WEB_BROWSER=1)
 else()
   target_compile_definitions(Hangszonyeg PRIVATE JUCE_WEB_BROWSER=0)
@@ -68,6 +78,10 @@ endif()
 
 if(MSVC)
   target_compile_options(Hangszonyeg PRIVATE /utf-8)
+endif()
+if(MINGW)
+  # egyetlen, önálló .exe: a MinGW futásidejű könyvtárai is belekerülnek
+  target_link_options(Hangszonyeg PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
 
 target_link_libraries(Hangszonyeg
