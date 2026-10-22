@@ -660,7 +660,8 @@ body.stage-in .bar{transform:translateY(115%)}
       <div class="row2"><input type="checkbox" id="m-tOn" aria-label="Közös tempó-LFO bekapcsolása"><select id="m-tShape" aria-label="A közös tempó-LFO alakja"><option value="sine">Szinusz</option><option value="triangle">Háromszög</option><option value="square">Négyszög</option><option value="saw">Fűrész fel</option><option value="sawdown">Fűrész le</option></select></div>
       <label for="m-tPer" class="sub2">Periódus <output id="m-tPer-o"></output></label><input type="range" id="m-tPer" min="0" max="1000" step="1">
       <label for="m-tDep" class="sub2">Mélység <output id="m-tDep-o"></output></label><input type="range" id="m-tDep" min="0" max="50" step="1"></div>
-    <div class="recbox"><p id="rec-status" class="small muted">A felvétel a teljes kimenetet rögzíti, a keverővel, az EQ-val és a ritmussal együtt.</p><button type="button" id="rec-dl" hidden>Felvétel letöltése</button></div>
+    <div class="recbox"><p id="rec-status" class="small muted">A felvétel a teljes kimenetet rögzíti, a keverővel, az EQ-val és a ritmussal együtt, tömörítés nélkül.</p>
+      <label class="inline small">Felvétel formátuma <select id="rec-fmt"><option value="f32">WAV, 32 bites lebegőpontos (bitre pontos)</option><option value="i24">WAV, 24 bites (kisebb fájl)</option></select></label><span class="small muted" id="rec-size"></span><button type="button" id="rec-dl" hidden>Felvétel letöltése</button></div>
   </div>
   <p class="small muted keys">Billentyűk: szóköz lejátszás, F teljes képernyő, Esc kilépés, 1 2 3 és 4 csatorna kijelölése (4 a mester), bal és jobb nyíl a kijelölt hangerő, G a görgős hangerő be- és kikapcsolása, M a MIDI-tanulás.</p>
 </section>
@@ -2582,33 +2583,84 @@ async function saveBlob(blob,filename){
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},5000);return'started';
 }
 const SAVE_MSG={saved:'A fájl mentve.',declined:'A mentés elmaradt.',too_large:'A fájl túl nagy ehhez a mentési módhoz. Rövidebb hosszt vagy kisebb mintavételezést válassz.',started:'A letöltés elindult.'};
+let recStarting=false;
 function toggleRec(){
-  const c=ctx();c.resume();const st=$('#rec-status');
-  if(rec){rec.mr.stop();rec=null;updateRecUI();return;}
-  if(!window.MediaRecorder){st.textContent='Ez a böngésző nem tud felvételt készíteni. Próbáld Chrome-ban, Edge-ben vagy Firefoxban.';return;}
-  if(!recDest){recDest=c.createMediaStreamDestination();masterOut.connect(recDest);}
-  const mime=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'].find(m=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(m))||'';
-  let mr;try{mr=new MediaRecorder(recDest.stream,mime?{mimeType:mime,audioBitsPerSecond:256000}:undefined);}catch(e){st.textContent='A felvétel nem indult el: '+(e.message||e);return;}
-  const chunks=[],t0=performance.now();
-  mr.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
-  mr.onstop=()=>finishRec(new Blob(chunks,{type:mr.mimeType||mime||'audio/webm'}),(performance.now()-t0)/1000);
-  mr.start(1000);rec={mr,t0};$('#rec-dl').hidden=true;st.textContent='Felvétel folyamatban. Minden, ami szól, rákerül.';updateRecUI();
+  const c=ctx();c.resume();
+  if(recStarting)return;
+  if(rec){recStop();return;}
+  recStarting=true;recStart().finally(()=>{recStarting=false;});
 }
-async function finishRec(blob,dur){
-  const st=$('#rec-status');st.textContent='A felvétel feldolgozása…';
-  let out=blob,ext=/mp4/.test(blob.type)?'m4a':/ogg/.test(blob.type)?'ogg':'webm',kind=ext.toUpperCase();
-  try{const ab=await decode(await blob.arrayBuffer());const L=ab.getChannelData(0),R=ab.numberOfChannels>1?ab.getChannelData(1):L;out=new Blob([encodeWav(L,R,ab.sampleRate)],{type:'audio/wav'});ext='wav';kind='WAV';dur=ab.duration;}catch(e){}
-  if(ext==='m4a')ext='mp4';
-  const stamp=new Date(),pad=n=>String(n).padStart(2,'0');
-  lastRec={blob:out,name:`hangszonyeg-felvetel-${stamp.getFullYear()}${pad(stamp.getMonth()+1)}${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}.${ext}`};
-  st.textContent=`Kész felvétel: ${fmtT(dur)}, ${kind}, ${nf(out.size/1048576,1)} MB.`;
-  const b=$('#rec-dl');b.textContent=`Felvétel letöltése (${kind})`;b.hidden=false;
+/* Bitre pontos felvétel: egy AudioWorklet a mester kimenetéről (ugyanaz a jel, amely a hangkártyára megy)
+   tömörítés nélkül, lebegőpontosan gyűjti a mintákat, a WAV ebből készül. */
+const REC_WORKLET=`class HzRec extends AudioWorkletProcessor{
+  constructor(){super();this.N=Math.max(4096,Math.round(sampleRate/2));this.L=new Float32Array(this.N);this.R=new Float32Array(this.N);this.i=0;this.on=true;
+    this.port.onmessage=e=>{if(e.data==='stop'){this.push(true);this.port.postMessage({t:'end'});this.on=false;}};}
+  push(last){if(!this.i)return;const L=last?this.L.slice(0,this.i):this.L,R=last?this.R.slice(0,this.i):this.R;this.port.postMessage({t:'data',L,R},last?[L.buffer,R.buffer]:[L.buffer,R.buffer]);
+    this.L=new Float32Array(this.N);this.R=new Float32Array(this.N);this.i=0;}
+  process(ins){if(!this.on)return false;const a=ins[0],l=a&&a[0],r=a&&(a[1]||a[0]),n=l?l.length:128;
+    for(let k=0;k<n;k++){this.L[this.i]=l?l[k]:0;this.R[this.i]=r?r[k]:0;if(++this.i===this.N)this.push(false);}return true;}}
+registerProcessor('hz-rec',HzRec);`;
+let recWkReady=null;
+function recWorklet(){
+  if(!recWkReady)recWkReady=(async()=>{for(const mk of[()=>URL.createObjectURL(new Blob([REC_WORKLET],{type:'application/javascript'})),()=>'data:application/javascript;charset=utf-8,'+encodeURIComponent(REC_WORKLET)]){try{await AC.audioWorklet.addModule(mk());return true;}catch(e){}}return false;})();
+  return recWkReady;
 }
-$('#rec-dl').addEventListener('click',async()=>{if(!lastRec)return;const b=$('#rec-dl');b.disabled=true;const r=await saveBlob(lastRec.blob,lastRec.name);$('#rec-status').textContent=SAVE_MSG[r];b.disabled=false;});
+async function recStart(){
+  const st=$('#rec-status'),fmt=$('#rec-fmt').value;
+  const R={chunks:[],frames:0,t0:performance.now(),sr:AC.sampleRate,fmt,done:null,kind:'',node:null,sink:AC.createGain()};
+  R.sink.gain.value=0;R.sink.connect(AC.destination);
+  const onData=(L,Rr)=>{R.chunks.push([L,Rr]);R.frames+=L.length;};
+  if(await recWorklet()){
+    const node=new AudioWorkletNode(AC,'hz-rec',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],channelCount:2,channelCountMode:'explicit',channelInterpretation:'speakers'});
+    R.done=new Promise(res=>{node.port.onmessage=e=>{const d=e.data;if(d.t==='data')onData(d.L,d.R);else if(d.t==='end')res();};});
+    masterOut.connect(node);node.connect(R.sink);R.node=node;R.kind='worklet';
+  }else{
+    const sp=AC.createScriptProcessor(4096,2,1);sp.channelCount=2;sp.channelCountMode='explicit';
+    sp.onaudioprocess=e=>{const b=e.inputBuffer;onData(b.getChannelData(0).slice(),(b.numberOfChannels>1?b.getChannelData(1):b.getChannelData(0)).slice());};
+    masterOut.connect(sp);sp.connect(R.sink);R.node=sp;R.kind='sp';R.done=Promise.resolve();
+  }
+  rec=R;$('#rec-dl').hidden=true;
+  st.textContent=`Felvétel folyamatban, tömörítés nélkül (${fmt==='f32'?'32 bites lebegőpontos, bitre pontos':'24 bites'}). Minden rákerül, ami szól.`;updateRecUI();
+}
+async function recStop(){
+  const R=rec;rec=null;updateRecUI();const st=$('#rec-status');st.textContent='A felvétel lezárása…';
+  try{masterOut.disconnect(R.node);}catch(e){}
+  if(R.kind==='worklet'){R.node.port.postMessage('stop');await Promise.race([R.done,new Promise(r=>setTimeout(r,3000))]);}
+  else R.node.onaudioprocess=null;
+  try{R.node.disconnect();R.sink.disconnect();}catch(e){}
+  await tick();
+  const blob=recWav(R.chunks,R.sr,R.fmt);R.chunks=[];
+  const stamp=new Date(),pad=n=>String(n).padStart(2,'0'),dur=R.frames/R.sr;
+  lastRec={blob,name:`hangszonyeg-felvetel-${stamp.getFullYear()}${pad(stamp.getMonth()+1)}${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}.wav`};
+  const kind=R.fmt==='f32'?'WAV, 32 bites lebegőpontos':'WAV, 24 bites';
+  st.textContent=`Kész felvétel: ${fmtT(dur)}, ${kind}, ${R.sr} Hz, ${nf(blob.size/1048576,1)} MB. `+(R.fmt==='f32'?'A minták bitre pontosan azok, amelyek a hangkártyára mentek.':'A minták a hangkártyára menő jel 24 bitre kerekítve (az eltérés legfeljebb −144 dB, a 0 dB fölötti csúcsok levágva).');
+  const b=$('#rec-dl');b.textContent=`Felvétel letöltése (WAV)`;b.hidden=false;
+}
+/* WAV darabokból: a nagy felvétel sem kér egyetlen óriási memóriablokkot */
+function recWav(chunks,sr,fmt){
+  const f32=fmt==='f32',bps=f32?4:3,frames=chunks.reduce((a,c)=>a+c[0].length,0),dataBytes=frames*2*bps;
+  const hl=f32?58:44,h=new ArrayBuffer(hl),dv=new DataView(h),ws=(o,s)=>{for(let i=0;i<s.length;i++)dv.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,'RIFF');dv.setUint32(4,hl-8+dataBytes,true);ws(8,'WAVE');ws(12,'fmt ');
+  dv.setUint32(16,f32?18:16,true);dv.setUint16(20,f32?3:1,true);dv.setUint16(22,2,true);dv.setUint32(24,sr,true);dv.setUint32(28,sr*2*bps,true);dv.setUint16(32,2*bps,true);dv.setUint16(34,bps*8,true);
+  let o=36;if(f32){dv.setUint16(36,0,true);ws(38,'fact');dv.setUint32(42,4,true);dv.setUint32(46,frames,true);o=50;}
+  ws(o,'data');dv.setUint32(o+4,dataBytes,true);
+  const parts=[h];
+  for(let ci=0;ci<chunks.length;ci++){
+    const[L,R]=chunks[ci],n=L.length;
+    if(f32){const x=new Float32Array(n*2);for(let i=0;i<n;i++){x[2*i]=L[i];x[2*i+1]=R[i];}parts.push(x);}
+    else{const u=new Uint8Array(n*6);let p=0;const put=v=>{v=v>1?1:v<-1?-1:v;let s=Math.round(v*8388607);u[p++]=s&255;u[p++]=(s>>8)&255;u[p++]=(s>>16)&255;};for(let i=0;i<n;i++){put(L[i]);put(R[i]);}parts.push(u);}
+    chunks[ci]=null;
+  }
+  return new Blob(parts,{type:'audio/wav'});
+}
 function updateRecUI(){
   const s=rec?`Leállítás (${fmtT((performance.now()-rec.t0)/1000)})`:'Felvétel';
   $$('[data-act=rec]').forEach(b=>{b.textContent=s;b.classList.toggle('recording',!!rec);b.setAttribute('aria-pressed',String(!!rec));});
+  if(rec){const mb=rec.frames*2*(rec.fmt==='f32'?4:3)/1048576,o=$('#rec-size');if(o)o.textContent=`${fmtT(rec.frames/rec.sr)}, ${nf(mb,0)} MB`;}
+  else{const o=$('#rec-size');if(o)o.textContent='';}
+  const f=$('#rec-fmt');if(f)f.disabled=!!rec;
 }
+$('#rec-dl').addEventListener('click',async()=>{if(!lastRec)return;const b=$('#rec-dl');b.disabled=true;const r=await saveBlob(lastRec.blob,lastRec.name);$('#rec-status').textContent=SAVE_MSG[r];b.disabled=false;});
 async function saveDeck(d){
   if(!d.L)return;const btn=d.el.save;btn.disabled=true;setStatus(d,'A fájl előkészítése…');await tick();
   try{
