@@ -1,0 +1,48 @@
+MSBuild version 18.11.1-1.26513.3+940033be3 for .NET Framework
+
+  Checking File Globs
+  1>Checking Build System
+  Generating Hangszonyeg_artefacts/JuceLibraryCode/Hangszonyeg_resources.rc
+  Building Custom Rule D:/a/hangszonyeg-desktop/hangszonyeg-desktop/CMakeLists.txt
+  Hangszonyeg_rc_lib.vcxproj -> D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build\Hangszonyeg_rc_lib.dir\Release\Hangszonyeg_rc_lib.lib
+  Generating juce_binarydata_HzData/JuceLibraryCode/BinaryData1.cpp, juce_binarydata_HzData/JuceLibraryCode/BinaryData2.cpp, juce_binarydata_HzData/JuceLibraryCode/BinaryData.h
+  Building Custom Rule D:/a/hangszonyeg-desktop/hangszonyeg-desktop/CMakeLists.txt
+  BinaryData1.cpp
+  BinaryData2.cpp
+  Generating Code...
+  HzData.vcxproj -> D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build\Release\HzData.lib
+  Generating Hangszonyeg_artefacts/JuceLibraryCode/JuceHeader.h
+  Building Custom Rule D:/a/hangszonyeg-desktop/hangszonyeg-desktop/CMakeLists.txt
+  Main.cpp
+  LocalServer.cpp
+  PluginHost.cpp
+  juce_audio_utils.cpp
+  juce_audio_processors.cpp
+  juce_audio_processors_ara.cpp
+  juce_audio_processors_lv2_libs.cpp
+  juce_gui_extra.cpp
+  juce_gui_basics.cpp
+  juce_graphics.cpp
+  juce_graphics_Harfbuzz.cpp
+D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build\_deps\juce-src\modules\juce_audio_processors\format_types\juce_VST3PluginFormat.cpp(734,55): warning C4458: declaration of 'iid' hides class member [D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build\Hangszonyeg.vcxproj]
+  (compiling source file '_deps/juce-src/modules/juce_audio_processors/juce_audio_processors.cpp')
+      D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build\_deps\juce-src\modules\juce_audio_processors\format_types\VST3_SDK\pluginterfaces\vst\ivsteditcontroller.h(235,20):
+      see declaration of 'Steinberg::Vst::IComponentHandler::iid'
+  
+D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build\_deps\juce-src\modules\juce_audio_processors\format_types\juce_VST3PluginFormat.cpp(770,51): warning C4458: declaration of 'iid' hides class member [D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build\Hangszonyeg.vcxproj]
+  (compiling source file '_deps/juce-src/modules/juce_audio_processors/juce_audio_processors.cpp')
+      D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build\_deps\juce-src\modules\juce_audio_processors\format_types\VST3_SDK\pluginterfaces\vst\ivsteditcontroller.h(235,20):
+      see declaration of 'Steinberg::Vst::IComponentHandler::iid'
+  
+  juce_events.cpp
+  juce_core.cpp
+  juce_core_CompilationTime.cpp
+  juce_data_structures.cpp
+  juce_audio_basics.cpp
+  juce_audio_formats.cpp
+  juce_audio_devices.cpp
+  juce_graphics_Sheenbidi.c
+  Generating code
+  Finished generating code
+  Hangszonyeg.vcxproj -> D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build\Hangszonyeg_artefacts\Release\Hangszonyeg.exe
+  Building Custom Rule D:/a/hangszonyeg-desktop/hangszonyeg-desktop/CMakeLists.txt

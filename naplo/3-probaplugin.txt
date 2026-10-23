@@ -1,0 +1,73 @@
+-- Building for: Visual Studio 18 2026
+-- The C compiler identification is MSVC 19.51.36260.0
+-- The CXX compiler identification is MSVC 19.51.36260.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring juceaide
+-- Building juceaide
+-- Exporting juceaide
+-- Testing juceaide
+-- Finished setting up juceaide
+CMake Warning at D:/a/hangszonyeg-desktop/hangszonyeg-desktop/build/_deps/juce-src/extras/Build/CMake/JUCEUtils.cmake:1721 (message):
+  Target HzTest has JUCE_BUNDLE_ID 'com.Hangszonyeg teszt.HzTest', which
+  contains spaces.  Use the BUNDLE_ID option to specify a valid ID.
+Call Stack (most recent call first):
+  D:/a/hangszonyeg-desktop/hangszonyeg-desktop/build/_deps/juce-src/extras/Build/CMake/JUCEUtils.cmake:2107 (_juce_set_fallback_properties)
+  D:/a/hangszonyeg-desktop/hangszonyeg-desktop/build/_deps/juce-src/extras/Build/CMake/JUCEUtils.cmake:2190 (_juce_initialise_target)
+  CMakeLists.txt:5 (juce_add_plugin)
+
+
+-- Configuring done (104.7s)
+-- Generating done (0.1s)
+-- Build files have been written to: D:/a/hangszonyeg-desktop/hangszonyeg-desktop/build-tp
+MSBuild version 18.11.1-1.26513.3+940033be3 for .NET Framework
+
+  Checking File Globs
+  1>Checking Build System
+  Generating HzTest_artefacts/JuceLibraryCode/HzTest_resources.rc
+  Building Custom Rule D:/a/hangszonyeg-desktop/hangszonyeg-desktop/tests/testplugin/CMakeLists.txt
+  HzTest_rc_lib.vcxproj -> D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build-tp\HzTest_rc_lib.dir\Release\HzTest_rc_lib.lib
+  Building Custom Rule D:/a/hangszonyeg-desktop/hangszonyeg-desktop/tests/testplugin/CMakeLists.txt
+  Building Custom Rule D:/a/hangszonyeg-desktop/hangszonyeg-desktop/tests/testplugin/CMakeLists.txt
+  TestPlugin.cpp
+  juce_audio_processors.cpp
+  juce_audio_processors_ara.cpp
+  juce_audio_processors_lv2_libs.cpp
+  juce_gui_extra.cpp
+  juce_gui_basics.cpp
+  juce_graphics.cpp
+  juce_graphics_Harfbuzz.cpp
+  juce_events.cpp
+  juce_core.cpp
+  juce_core_CompilationTime.cpp
+  juce_data_structures.cpp
+  juce_audio_basics.cpp
+  juce_audio_utils.cpp
+  juce_audio_formats.cpp
+  juce_audio_devices.cpp
+  juce_VST3ManifestHelper.cpp
+  juce_graphics_Sheenbidi.c
+  HzTest.vcxproj -> D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build-tp\HzTest_artefacts\Release\HZ Teszt_SharedCode.lib
+  HzTest_vst3_helper.vcxproj -> D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build-tp\Release\HzTest_vst3_helper.exe
+  Building Custom Rule D:/a/hangszonyeg-desktop/hangszonyeg-desktop/tests/testplugin/CMakeLists.txt
+  juce_audio_plugin_client_AAX.cpp
+  juce_audio_plugin_client_AAX_utils.cpp
+  juce_audio_plugin_client_ARA.cpp
+  juce_audio_plugin_client_LV2.cpp
+  juce_audio_plugin_client_Standalone.cpp
+  juce_audio_plugin_client_Unity.cpp
+  juce_audio_plugin_client_VST2.cpp
+  juce_audio_plugin_client_VST3.cpp
+     Creating library D:/a/hangszonyeg-desktop/hangszonyeg-desktop/build-tp/HzTest_artefacts/Release/VST3/HZ Teszt.lib and object D:/a/hangszonyeg-desktop/hangszonyeg-desktop/build-tp/HzTest_artefacts/Release/VST3/HZ Teszt.exp
+  HzTest_VST3.vcxproj -> D:\a\hangszonyeg-desktop\hangszonyeg-desktop\build-tp\HzTest_artefacts\Release\VST3\HZ Teszt.vst3\Contents\x86_64-win\HZ Teszt.vst3
+  removing moduleinfo.json
+  creating D:/a/hangszonyeg-desktop/hangszonyeg-desktop/build-tp/HzTest_artefacts/Release/VST3/HZ Teszt.vst3
+  Building Custom Rule D:/a/hangszonyeg-desktop/hangszonyeg-desktop/tests/testplugin/CMakeLists.txt
