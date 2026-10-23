@@ -278,6 +278,20 @@ canvas.meter{width:10px;height:170px;border-radius:3px;background:#fff;box-shado
 .mctl .row2{display:flex;gap:8px;align-items:center}
 .mctl .row2 input[type=range]{flex:1;min-width:0}
 .mctl .row2 input[type=number]{width:68px}
+.onl{border:1px solid var(--line);border-radius:var(--radius-l);padding:10px 12px;margin:0 0 10px;display:flex;flex-direction:column;gap:8px;background:color-mix(in srgb,var(--panel) 70%,#fff)}
+.onl-h{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.onl-src,.onl-tools{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.onl-src input,.onl-tools input[type=search]{padding:3px 8px;border-radius:var(--radius-s);border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:.85rem}
+#onl-repo{width:16em}#onl-branch{width:6em}#onl-dir{width:8em}
+.onl-tools .sp{flex:1}
+.onl-list{max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.onl-gh{display:flex;gap:8px;align-items:center;padding:4px 0 2px;border-bottom:1px solid var(--line)}
+.onl-gh button{font-size:.75rem;padding:1px 8px}
+.onl-it{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:3px 4px;border-radius:var(--radius-s);font-size:.88rem;cursor:pointer}
+.onl-it:hover{background:color-mix(in srgb,var(--line) 35%,transparent)}
+.onl-it.in .onl-n{font-weight:600}
+.onl-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.onl p{margin:0}
 .recbox{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .recbox p{margin:0}
 .keys{margin:10px 0 0}
@@ -4238,6 +4252,105 @@ function drawDeq(){
   if(!DEQ[k].on){g.fillStyle=ink;g.globalAlpha=0.55;g.textBaseline='middle';g.fillText('Kikapcsolva',W/2,top+hh/2);g.globalAlpha=1;}
 }
 
+/* ===================== Online mintatár: hangok egy GitHub-tárolóból, bármelyik eszközről =====================
+   A hangok egy nyilvános GitHub-tároló mappájában vannak (alapból: samples). A lista a mappában lévő index.json-ból
+   jön (ezt a tároló saját munkafolyamata frissíti), ha az nincs, a GitHub listájából. A letöltött hangokat a böngésző
+   megjegyzi, így másodszorra már nem kell újra letölteni. */
+const ONL_LS='hangszonyeg-mintatar-v1',ONL_CACHE='hz-mintatar-v1';
+const ONL_AUDIO=/\.(wav|wave|mp3|ogg|oga|opus|flac|m4a|aac|aif|aiff|caf|webm)$/i;
+const ONL={src:{repo:'BordasMate/hangszonyeg',branch:'main',dir:'samples'},files:[],loaded:new Map(),sel:new Set(),q:'',busy:false,open:false,via:''};
+try{const s=JSON.parse(localStorage.getItem(ONL_LS)||'null');if(s&&s.repo)ONL.src=Object.assign(ONL.src,s);}catch(e){}
+try{const q=new URLSearchParams(location.search),m=q.get('mintatar');if(m&&/^[\w.-]+\/[\w.-]+$/.test(m))ONL.src.repo=m;}catch(e){}
+const onlRaw=p=>`https://raw.githubusercontent.com/${ONL.src.repo}/${encodeURIComponent(ONL.src.branch)}/${p.split('/').map(encodeURIComponent).join('/')}`;
+const onlSize=b=>b>=1048576?nf(b/1048576,1)+' MB':nf(Math.max(1,Math.round(b/1024)))+' kB';
+function onlStatus(t){const e=$('#onl-st');if(e)e.textContent=t;}
+async function onlList(){
+  if(ONL.busy)return;ONL.busy=true;onlStatus('A lista betöltése…');renderOnl();
+  const{repo,branch,dir}=ONL.src,d=dir.replace(/^\/+|\/+$/g,'');
+  let files=null,err='';
+  try{const r=await fetch(onlRaw((d?d+'/':'')+'index.json'),{cache:'no-store'});if(r.ok){const j=await r.json();files=(j.files||[]).filter(f=>f&&f.path&&ONL_AUDIO.test(f.path));ONL.via='index.json';}}catch(e){err=e.message||String(e);}
+  if(!files){
+    try{const r=await fetch(`https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,{headers:{Accept:'application/vnd.github+json'}});
+      if(r.status===404)throw new Error('a tároló vagy az ág nem található, vagy a tároló nem nyilvános');
+      if(r.status===403)throw new Error('a GitHub átmenetileg korlátozza a lekérdezéseket; próbáld pár perc múlva');
+      if(!r.ok)throw new Error('a GitHub '+r.status+' kóddal válaszolt');
+      const j=await r.json();files=(j.tree||[]).filter(t=>t.type==='blob'&&(!d||t.path.startsWith(d+'/'))&&ONL_AUDIO.test(t.path)).map(t=>({path:t.path,size:t.size,sha:t.sha}));ONL.via='GitHub-lista';}
+    catch(e){err=e.message||String(e);}
+  }
+  ONL.busy=false;
+  if(!files){ONL.files=[];onlStatus(`A mintatár nem érhető el (${ONL.src.repo}): ${err}.`);renderOnl();return;}
+  files.sort((a,b)=>a.path.localeCompare(b.path,'hu'));ONL.files=files;
+  const tot=files.reduce((a,f)=>a+(f.size||0),0);
+  onlStatus(files.length?`${files.length} hang, összesen ${onlSize(tot)} (${ONL.src.repo}).`:`A ${d||'gyökér'} mappában még nincs hang. Töltsd fel őket a GitHubon a tároló „${d}” mappájába.`);
+  renderOnl();
+}
+async function onlFetch(f,onProg){
+  const url=onlRaw(f.path),key=url+'#'+(f.sha||f.size||'');
+  let cache=null;try{cache=await caches.open(ONL_CACHE);const hit=await cache.match(key);if(hit)return await hit.arrayBuffer();}catch(e){cache=null;}
+  const r=await fetch(url);if(!r.ok)throw new Error('letöltési hiba ('+r.status+')');
+  const total=+r.headers.get('content-length')||f.size||0;let buf;
+  if(r.body&&r.body.getReader&&total){const rd=r.body.getReader(),parts=[];let got=0;for(;;){const{done,value}=await rd.read();if(done)break;parts.push(value);got+=value.length;onProg&&onProg(got/total);}
+    const u=new Uint8Array(got);let o=0;for(const p of parts){u.set(p,o);o+=p.length;}buf=u.buffer;}
+  else buf=await r.arrayBuffer();
+  if(cache){try{await cache.put(key,new Response(buf.slice(0),{headers:{'Content-Type':'application/octet-stream'}}));}catch(e){}}
+  return buf;
+}
+const onlMime=n=>({wav:'audio/wav',wave:'audio/wav',mp3:'audio/mpeg',ogg:'audio/ogg',oga:'audio/ogg',opus:'audio/ogg',flac:'audio/flac',m4a:'audio/mp4',aac:'audio/aac',aif:'audio/aiff',aiff:'audio/aiff',caf:'audio/x-caf',webm:'audio/webm'})[n.split('.').pop().toLowerCase()]||'';
+async function onlLoad(list,deck){
+  if(ONL.busy||!list.length)return;ONL.busy=true;renderOnl();let ok=0;
+  for(let i=0;i<list.length;i++){
+    const f=list[i],name=f.path.split('/').pop();
+    if(ONL.loaded.has(f.path)&&BANK.includes(ONL.loaded.get(f.path))){const it=ONL.loaded.get(f.path);if(deck)await assign(it,deck);ok++;continue;}
+    try{
+      const buf=await onlFetch(f,p=>onlStatus(`Letöltés (${i+1}/${list.length}): ${name}, ${Math.round(p*100)}%`));
+      onlStatus(`Betöltés (${i+1}/${list.length}): ${name}`);
+      const added=await bankAddFiles([new File([buf],name,{type:onlMime(name)})],deck||null);
+      if(added[0]){added[0].onl=f.path;ONL.loaded.set(f.path,added[0]);ok++;}
+    }catch(e){onlStatus(`A(z) ${name} nem tölthető le: ${e.message||e}`);}
+  }
+  ONL.busy=false;ONL.sel.clear();
+  onlStatus(`${ok} hang betöltve a mintatárból${deck?` a(z) ${deck.key} sávra`:' a hangtárba'}.`);renderOnl();
+}
+function buildOnl(){
+  const head=$('#bank-sec .bank-head'),btn=document.createElement('button');btn.type='button';btn.className='quiet';btn.id='onl-tog';btn.setAttribute('aria-expanded','false');btn.textContent='Online mintatár';
+  head.insertBefore(btn,$('#bank-dist'));
+  const box=document.createElement('div');box.className='onl';box.id='onl';box.hidden=true;
+  box.innerHTML=`<div class="onl-h"><b>Online mintatár</b><span class="small muted">GitHub-tároló, bármelyik eszközről elérhető</span></div>
+    <div class="onl-src"><label class="inline small">Tároló <input id="onl-repo" spellcheck="false" aria-label="GitHub-tároló: felhasználó/név"></label>
+      <label class="inline small">Ág <input id="onl-branch" spellcheck="false" size="8"></label><label class="inline small">Mappa <input id="onl-dir" spellcheck="false" size="10"></label>
+      <button type="button" class="quiet" id="onl-refresh">Frissítés</button></div>
+    <div class="onl-tools"><input type="search" id="onl-q" placeholder="Keresés a mintatárban" aria-label="Keresés a mintatárban"><label class="inline small"><input type="checkbox" id="onl-all"> Mind</label>
+      <span class="sp"></span><button type="button" id="onl-add">Kijelöltek a hangtárba</button>${KEYS.map(k=>`<button type="button" class="to" data-deck="${k}" data-onl="${k}">→ ${k}</button>`).join('')}</div>
+    <div class="onl-list" id="onl-list"></div>
+    <p class="small muted" id="onl-st" aria-live="polite"></p>`;
+  $('#bank-sec .bank-body').insertBefore(box,$('#blist'));
+  const setSrc=()=>{ONL.src={repo:$('#onl-repo').value.trim()||'BordasMate/hangszonyeg',branch:$('#onl-branch').value.trim()||'main',dir:$('#onl-dir').value.trim()};try{localStorage.setItem(ONL_LS,JSON.stringify(ONL.src));}catch(e){}onlList();};
+  $('#onl-repo').value=ONL.src.repo;$('#onl-branch').value=ONL.src.branch;$('#onl-dir').value=ONL.src.dir;
+  ['onl-repo','onl-branch','onl-dir'].forEach(id=>$('#'+id).addEventListener('change',setSrc));
+  $('#onl-refresh').addEventListener('click',setSrc);
+  btn.addEventListener('click',()=>{ONL.open=!ONL.open;box.hidden=!ONL.open;btn.setAttribute('aria-expanded',String(ONL.open));btn.textContent=ONL.open?'Mintatár elrejtése':'Online mintatár';
+    if(ONL.open){if($('#bank-sec').classList.contains('collapsed'))$('#bank-tog').click();if(!ONL.files.length&&!ONL.busy)onlList();}});
+  $('#onl-q').addEventListener('input',e=>{ONL.q=e.target.value.toLowerCase();renderOnl();});
+  $('#onl-all').addEventListener('change',e=>{onlVisible().forEach(f=>e.target.checked?ONL.sel.add(f.path):ONL.sel.delete(f.path));renderOnl();});
+  $('#onl-add').addEventListener('click',()=>onlLoad(ONL.files.filter(f=>ONL.sel.has(f.path))));
+  $$('#onl [data-onl]').forEach(b=>b.addEventListener('click',()=>onlLoad(ONL.files.filter(f=>ONL.sel.has(f.path)),deckBy(b.dataset.onl))));
+}
+const onlVisible=()=>ONL.files.filter(f=>!ONL.q||f.path.toLowerCase().includes(ONL.q));
+function renderOnl(){
+  const list=$('#onl-list');if(!list)return;
+  const vis=onlVisible(),d=ONL.src.dir.replace(/^\/+|\/+$/g,''),groups=new Map();
+  vis.forEach(f=>{const rel=d&&f.path.startsWith(d+'/')?f.path.slice(d.length+1):f.path,parts=rel.split('/'),g=parts.length>1?parts.slice(0,-1).join(' / '):'';if(!groups.has(g))groups.set(g,[]);groups.get(g).push({f,name:parts[parts.length-1]});});
+  list.innerHTML=[...groups].map(([g,items])=>`<div class="onl-g">${g?`<div class="onl-gh"><b>${esc(g)}</b><span class="small muted">${items.length} hang</span><button type="button" class="quiet" data-gsel="${esc(g)}">Mind kijelölése</button></div>`:''}
+    ${items.map(({f,name})=>{const inBank=ONL.loaded.has(f.path)&&BANK.includes(ONL.loaded.get(f.path));return`<label class="onl-it${inBank?' in':''}"><input type="checkbox" data-p="${esc(f.path)}" ${ONL.sel.has(f.path)?'checked':''}><span class="onl-n" title="${esc(f.path)}">${esc(name)}</span><span class="small muted">${f.size?onlSize(f.size):''}${inBank?' · a hangtárban':''}</span></label>`;}).join('')}</div>`).join('');
+  $$('#onl-list input[data-p]').forEach(c=>c.addEventListener('change',()=>{c.checked?ONL.sel.add(c.dataset.p):ONL.sel.delete(c.dataset.p);onlButtons();}));
+  $$('#onl-list [data-gsel]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();const g=b.dataset.gsel;groups.get(g).forEach(({f})=>ONL.sel.add(f.path));renderOnl();}));
+  onlButtons();
+}
+function onlButtons(){
+  const n=ONL.sel.size,dis=ONL.busy||!n;$('#onl-add').disabled=dis;$$('#onl [data-onl]').forEach(b=>b.disabled=dis);$('#onl-refresh').disabled=ONL.busy;
+  $('#onl-add').textContent=n?`${n} hang a hangtárba`:'Kijelöltek a hangtárba';
+}
+
 /* ===================== Hangcsoportok: a hangtár egyenlő, ismétlés nélküli felosztása ===================== */
 const GRP={n:6,groups:[],hist:[],made:0};
 let grpRaf=0;
@@ -5396,7 +5509,7 @@ document.addEventListener('keydown',e=>{
 });
 
 /* ===================== Indulás és rajzciklus ===================== */
-buildBank();decks.forEach(buildStrip);buildParams();decks.forEach(wireDeck);selectTab('rhythm');
+buildBank();buildOnl();decks.forEach(buildStrip);buildParams();decks.forEach(wireDeck);selectTab('rhythm');
 buildChans();buildMinis();buildEqUI();buildChPanel();buildGdUI();buildDeqUI();buildDlyUI();buildPlgUI();if(HZN){natConnect();$('#plg-show').textContent='Pluginok (VST3, WAM)';}buildCompUI();buildPreset();buildMasterTempoLfo();buildGrp();buildRoom();buildLog();buildAuto();selectCh('A');buildVis();buildMidi();midiTargets().forEach(midiId);midiList();iosSetup();CHS.forEach(updFx);
 $('#hints').addEventListener('change',e=>document.body.classList.toggle('show-hints',e.target.checked));
 $('#srcwave').addEventListener('change',e=>decks.forEach(d=>setFilesShown(d,e.target.checked)));
